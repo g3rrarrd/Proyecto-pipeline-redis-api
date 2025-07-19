@@ -1,0 +1,19 @@
+# Crear imagen en docker
+docker buildx build --platform linux/amd64 -t expertos-sabado:latest . --load
+
+# Correr en el contenedor de docker
+docker run -d -p 8000:8000 --name expertos-sabado --env-file .env expertos-sabado:latest
+
+# Para implementar en el azure container registry
+az login
+az acr login --name <nombre del container>
+
+docker tag --name <nombre de la imagen y la copia> expertos-sabado:latest <en que hub hacer el push> <nombre del container.azurecr.io/<nombre del repositorio a crear:version a desplegar>>
+
+docker tag --name <nombre de la imagen y la copia> expertos-sabado:latest <en que hub hacer el push> <nombre del container.azurecr.io/<nombre del repositorio a crear:latest>>
+
+docker push acrexppipelinedev.azurecr.io/expertos-sabado:latest
+docker push acrexppipelinedev.azurecr.io/expertos-sabado:0.2.0
+
+
+Server_name : serverpg-exp-pipeline-dev.postgres.database.azure.com
