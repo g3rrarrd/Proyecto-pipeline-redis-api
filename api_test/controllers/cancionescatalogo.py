@@ -29,19 +29,24 @@ async def get_cancion_catalogo() -> list[CancionCatalogo]:
     return [CancionCatalogo(**item) for item in dict]
 
 async def get_canciones_by_genre(track_genre: str) -> list[CancionCatalogo]:
-
+    
+    normalized_genre = track_genre.strip().lower()
+    dynamic_cache_key = f"canciones:genre:{normalized_genre}"
+    
     redis_client = get_redis_client()
-    cache_data = get_from_cache(redis_client, CANCIONES_CACHE_KEY)
+    
+    cache_data = get_from_cache(redis_client, dynamic_cache_key)
     if cache_data:
+        logger.info(f"Cache hit para género: {normalized_genre}")
         return [CancionCatalogo(**item) for item in cache_data]
-
+    
     query = """
         SELECT * 
         FROM canciones.catalogos 
         WHERE LOWER(track_genre) = LOWER(%s)
-        Limit 100
+        LIMIT 100
     """
-    params = (track_genre.strip(),)
+    params = (normalized_genre,)
     
     try:
         results_json = await execute_query_json(query, params, needs_commit=False)
@@ -53,6 +58,8 @@ async def get_canciones_by_genre(track_genre: str) -> list[CancionCatalogo]:
                 detail=f"No se encontraron canciones en el género '{track_genre}'"
             )
         
+        store_in_cache(redis_client, dynamic_cache_key, songs_dict, CACHE_TTL)
+        
         return [CancionCatalogo(**item) for item in songs_dict]
         
     except HTTPException:
@@ -63,7 +70,7 @@ async def get_canciones_by_genre(track_genre: str) -> list[CancionCatalogo]:
             status_code=500,
             detail="Error al consultar la base de datos"
         )
-    
+        
 async def create_cancion(cancion_data: CancionCatalogo) -> CancionCatalogo:
     
     max_id_query = "SELECT COALESCE(MAX(id), 0) AS max_id FROM canciones.catalogos"
@@ -76,10 +83,9 @@ async def create_cancion(cancion_data: CancionCatalogo) -> CancionCatalogo:
             detail="Error al conectar con la base de datos"
         )
 
-    current_max_id = int(max_id_data[0].get('max_id', 0))  # Convertir a entero
+    current_max_id = int(max_id_data[0].get('max_id', 0))
     new_id = current_max_id + 1
 
-    # Query para insertar la nueva canción
     insert_query = """
         INSERT INTO canciones.catalogos(
             id,
@@ -104,7 +110,6 @@ async def create_cancion(cancion_data: CancionCatalogo) -> CancionCatalogo:
     )
 
     try:
-        # Ejecutar la inserción
         insert_result = await execute_query_json(insert_query, params, needs_commit=True)
         inserted_data = json.loads(insert_result)
         
@@ -114,7 +119,6 @@ async def create_cancion(cancion_data: CancionCatalogo) -> CancionCatalogo:
                 detail="Error al crear la canción en la base de datos"
             )
 
-        # Crear el objeto de respuesta
         created_cancion = CancionCatalogo(
             id=new_id,
             artists=cancion_data.artists,
@@ -124,8 +128,16 @@ async def create_cancion(cancion_data: CancionCatalogo) -> CancionCatalogo:
             track_genre=cancion_data.track_genre
         )
 
+        
         redis_client = get_redis_client()
-        cache_deleted = delete_cache( redis_client, CANCIONES_CACHE_KEY )
+        if redis_client:
+        
+            genre_cache_key = f"canciones:genre:{cancion_data.track_genre.strip().lower()}"
+            delete_cache(redis_client, genre_cache_key)
+            
+            delete_cache(redis_client, CANCIONES_CACHE_KEY)
+            
+            logger.info(f"Invalidado caché para género: {cancion_data.track_genre}")
 
         return created_cancion
 

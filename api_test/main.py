@@ -1,8 +1,9 @@
+from typing import Optional
 import uvicorn
 import logging
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, Response, Request
+from fastapi import FastAPI, Response, Request, Query
 from contextlib import asynccontextmanager
 
 from controllers.firebase import register_user_firebase, login_user_firebase
@@ -29,7 +30,7 @@ async def lifespan(app: FastAPI):
 
 app = FastAPI( title="API-canciones",
     description="canciones API Lab expert system",
-    version="0.5.0",
+    version="0.5.1",
     lifespan=lifespan
     )
 
@@ -43,28 +44,32 @@ else:
 @app.get("/api/health")
 async def health_check():
     return {"status": "ok",
-            "version": "0.5.0"
+            "version": "0.5.1"
             }
 
 ###Get###
 
 @app.get("/api/version")
 def get_version():
-    return {"version": "0.5.0"}
+    return {"version": "0.5.1"}
 
 @app.get("/")
 def read_root():
     return {"message": "Bienvenido a mi API con FastAPI"}
 
-@app.get("/api/canciones/catalogo", response_model=list[CancionCatalogo])
-async def get_canciones_catalogo() -> list[CancionCatalogo]:
-    
-    canciones: list[CancionCatalogo] = await get_cancion_catalogo()
-    return canciones
 
-@app.get("/api/canciones/catalogo/", response_model=list[CancionCatalogo])
-async def get_canciones_catalogo_by_genre(track_genre: str) -> list[CancionCatalogo]:
-    canciones: list[CancionCatalogo] = await get_canciones_by_genre(track_genre)
+@app.get("/api/canciones/catalogo", response_model=list[CancionCatalogo])
+async def get_canciones_catalogo(
+    track_genre: Optional[str] = Query(None, description="Filtrar canciones por género")
+) -> list[CancionCatalogo]:
+    
+    if track_genre:
+        # Si se proporciona un género, usar la función filtrada
+        canciones = await get_canciones_by_genre(track_genre)
+    else:
+        # Si no hay género, obtener todo el catálogo
+        canciones = await get_cancion_catalogo()
+    
     return canciones
 
 @app.get("/test/validate")
